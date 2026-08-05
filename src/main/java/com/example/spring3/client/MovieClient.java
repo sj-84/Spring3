@@ -2,15 +2,16 @@ package com.example.spring3.client;
 
 public class MovieClient {
 
-    String baseUrl;
-    String apiKey;
+    private final String baseUrl;
+    private final String apiKey;
+
     public MovieClient(String baseUrl, String apiKey) {
         this.baseUrl = baseUrl;
         this.apiKey = apiKey;
     }
 
-    public int fetchPopularity(String title) {
-        System.out.println("[GET " + baseUrl + "/current?movie=" + title + "/apiKey=" + apiKey + ")]");
+    public int fetchPopularity(String movie) {
+        System.out.println("[GET " + baseUrl + "/current?movie=" + movie + "&apiKey=" + apiKey + "]");
         return 85;
     }
 }

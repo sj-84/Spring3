@@ -3,7 +3,9 @@ package com.example.spring3.config;
 import com.example.spring3.client.MovieClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 
+@Configuration
 public class MovieConfig {
 
     @Bean

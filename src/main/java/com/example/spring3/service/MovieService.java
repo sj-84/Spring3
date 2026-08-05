@@ -5,13 +5,14 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class MovieService {
-    MovieClient movieClient;
+    private final MovieClient movieClient;
+
     MovieService(MovieClient movieClient) {
         this.movieClient = movieClient;
     }
 
-   public String recommend(String genre) {
-        int x = this.movieClient.fetchPopularity(genre);
-        return String.valueOf(x);
+    public String recommend(String genre) {
+        int popularity = movieClient.fetchPopularity(genre);
+        return "Recommendation for " + genre + ": popularity score " + popularity + "/100";
     }
 }

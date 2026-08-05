@@ -1,11 +1,13 @@
-package com.example.spring3.Runners;
+package com.example.spring3.runners;
 
 import com.example.spring3.service.MovieService;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.stereotype.Component;
 
+@Component
 public class MovieRunner implements CommandLineRunner {
 
-    MovieService movieService;
+    private final MovieService movieService;
 
     MovieRunner(MovieService movieService) {
         this.movieService = movieService;
@@ -13,6 +15,6 @@ public class MovieRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        System.out.println(this.movieService.recommend("Sci-Fi"));
+        System.out.println(movieService.recommend("Sci-Fi"));
     }
 }
