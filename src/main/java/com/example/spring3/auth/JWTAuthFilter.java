@@ -30,7 +30,7 @@ public class JWTAuthFilter extends OncePerRequestFilter { //jwtservice used
     @Override //what if i dont give override annotation
     protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res, FilterChain chain) throws IOException, ServletException {
         String header = req.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
+        if (header != null && header.startsWith("Bearer ")) {
             Optional<String> username = jwtService.validate(header.substring("Bearer ".length()));
             if (username.isPresent() && SecurityContextHolder.getContext().getAuthentication() == null) {
                 UserDetails userDetails = UserDetailsService.loadUserByUsername(username.get());
