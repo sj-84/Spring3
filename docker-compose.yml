@@ -1,0 +1,66 @@
+# =================================================================================
+# WHY DO WE NEED DOCKER COMPOSE?
+# Kafka is a SERVER. Our Spring app (KafkaPublisher) is a CLIENT that needs a
+# running Kafka broker to connect to. Docker Compose starts that broker with one
+# command:  docker compose up -d
+# Without it, kafkaTemplate.send(...) fails at runtime — nothing is listening on
+# port 9092, so the app cannot connect.
+#
+# Why Compose instead of installing Kafka manually?
+#  - No manual setup: the apache/kafka:latest image already contains Kafka; the
+#    env vars below just configure the broker.
+#  - One command to start/stop everything (and later, if you add Zookeeper,
+#    Postgres, etc., they all start together).
+#  - Runs anywhere: no need to install Kafka on your machine; the container
+#    isolates it.
+# So Compose provides the INFRASTRUCTURE (the Kafka broker), and the Spring app
+# is the CLIENT that talks to it.
+# =================================================================================
+
+services:            # lists the containers (services) to start
+  kafka:             # the name of this service/container
+
+    image: apache/kafka:latest
+    # Which pre-built container image to use. Docker downloads it the first time.
+
+    ports:
+      - "9092:9092"
+    # Maps host port 9092 to container port 9092.
+    # "9092:9092" = HOST:CONTAINER. The Spring app connects to localhost:9092.
+
+    environment:     # env vars passed into the container; configure the broker
+      KAFKA_NODE_ID: 1
+      # Each broker gets a unique ID. 1 = this is the single broker.
+
+      KAFKA_PROCESS_ROLES: broker,controller
+      # Kafka has two jobs: broker (stores/serves messages) and controller
+      # (manages the cluster). In the new Kafka versions, ONE process can do both,
+      # so we don't need Zookeeper separately.
+
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      # The ports the container listens on: 9092 for clients (us), 9093 for
+      # controller communication inside the cluster.
+
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      # The address Kafka TELLS clients to connect to. We advertise localhost:9092
+      # because the app runs on the same machine, outside the container.
+
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      # Which listener is used for controller traffic. Must match the name in the
+      # listener map below.
+
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      # Defines the controller nodes. "1" = node id, "localhost:9093" = address.
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      # Links each listener name to a security protocol. PLAINTEXT = no encryption,
+      # fine for local development.
+
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      # The __consumer_offsets topic stores consumer progress. With one broker,
+      # replication factor must be 1 (can't replicate to a broker that doesn't exist).
+
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Lets topics (like "greetings.created") be created automatically the first
+      # time a message is sent to them. This is why we don't need to create the
+      # topic manually.
