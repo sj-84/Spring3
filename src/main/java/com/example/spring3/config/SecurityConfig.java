@@ -29,7 +29,7 @@ public class SecurityConfig { //jwtauthfilter used
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/api/public", "/api/auth/login").permitAll() //requestMatchers takes varargs as arg which is an array
+                        .requestMatchers("/", "/api/public", "/api/auth/login", "/api/inventory/**", "/api/order/**").permitAll() //requestMatchers takes varargs as arg which is an array
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
