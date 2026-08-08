@@ -11,11 +11,11 @@ folder:
 
 | Project        | Role                         | What it does                                  |
 |----------------|------------------------------|-----------------------------------------------|
-| `spring3`      | **Producer / Sender**        | Builds a `HelloModel` and pushes it to Kafka  |
+| `e-com1`      | **Producer / Sender**        | Builds a `HelloModel` and pushes it to Kafka  |
 | `Hello-listener` | **Consumer / Listener**    | Subscribes to the topic and prints each message |
 
 Both apps talk to the **same** Kafka broker (`localhost:9092`, started by
-`spring3/docker-compose.yml`).
+`e-com1/docker-compose.yml`).
 
 ---
 
@@ -32,12 +32,12 @@ Both apps talk to the **same** Kafka broker (`localhost:9092`, started by
         (producer)                |               (consumer)
                                   |
    +------------------+           |           +------------------------+
-   |     spring3      |-----------+---------->|     Hello-listener     |
+   |     e-com1       |-----------+---------->|     Hello-listener     |
    |  KafkaPublisher  |                       |  GreetingKafkaListener |
    +------------------+                       +------------------------+
 ```
 
-Flow in one sentence: `spring3` writes `"Hello1"` to topic `greetings.created`
+Flow in one sentence: `e-com1` writes `"Hello1"` to topic `greetings.created`
 on the broker; `Hello-listener` has a `@KafkaListener` on that same topic, so the
 broker delivers the message to it and it prints:
 
@@ -47,12 +47,12 @@ Received greeting from Kafka: Hello1
 
 ---
 
-## 2. Producer side — `spring3` (the sender)
+## 2. Producer side — `e-com1` (the sender)
 
 Three files do the work (plus a model):
 
 ```
-src/main/java/com/example/spring3/
+src/main/java/com/example/ecom1/
 ├── config/KafkaConfig.java       → declares the topic name + creates it
 ├── kafka/KafkaPublisher.java     → the actual sender (uses KafkaTemplate)
 ├── service/HelloKafkaService.java→ the "start button" (calls the sender)
@@ -167,7 +167,7 @@ public class GreetingKafkaListener {
 
 - `@KafkaListener(topics = "greetings.created", ...)` → tells Spring: run this
   method every time a message lands on that topic. The topic name is the **same
-  literal** as `KafkaConfig.GREETING_TOPIC` in spring3 — the two apps share only
+  literal** as `KafkaConfig.GREETING_TOPIC` in e-com1 — the two apps share only
   the broker, not code, so it's written out here.
 - `groupId = "hello-listener-group"` → the consumer group. Kafka tracks this
   group's read-offset so it doesn't re-deliver old messages on restart.
@@ -219,8 +219,8 @@ and the consumer listens on `greetings.other`, no message ever arrives.
 
 ## 5. End-to-end flow
 
-1. Kafka broker starts via `docker compose up -d` in `spring3` (listening on `9092`).
-2. `spring3` starts. The `NewTopic` bean creates topic `greetings.created`.
+1. Kafka broker starts via `docker compose up -d` in `e-com1` (listening on `9092`).
+2. `e-com1` starts. The `NewTopic` bean creates topic `greetings.created`.
 3. Something calls `HelloKafkaService.send()` (or injects `KafkaPublisher`
    directly and calls `sendMessage`).
 4. `KafkaPublisher` → `kafkaTemplate.send("greetings.created", "id1", "Hello1")`.
@@ -241,8 +241,8 @@ and the consumer listens on `greetings.other`, no message ever arrives.
 Prerequisites: Docker (for Kafka), JDK 17, Maven wrapper in each project.
 
 ```bash
-# 1) Start Kafka (from spring3)
-cd spring3
+# 1) Start Kafka (from e-com1)
+cd e-com1
 docker compose up -d
 
 # 2) Start the listener (terminal A)
@@ -250,7 +250,7 @@ cd Hello-listener
 ./mvnw spring-boot:run          # Windows: .\mvnw.cmd spring-boot:run
 
 # 3) Start the sender (terminal B)
-cd spring3
+cd e-com1
 ./mvnw spring-boot:run
 
 # 4) Trigger a send — however the app calls helloKafkaService.send(),

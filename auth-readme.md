@@ -1,4 +1,4 @@
-# Spring3 Auth — Key Points
+# E-com1 Auth — Key Points
 
 ## Users (in-memory, no DB)
 Defined in `config/SecurityConfig.java` (`userDetailsService` bean), passwords hashed with BCrypt:
@@ -102,7 +102,7 @@ For `/api/private`, no rule matches except `.anyRequest().authenticated()`, so S
 ```
 mvn spring-boot:run
 ```
-Maven downloads dependencies (first run takes longer), compiles, and starts the embedded Tomcat server. Wait for the "Started Spring3Application" line in the log — the app listens on port 8080 (`spring.application.name=spring3` and no `server.port`, so 8080 is the default). Stop with `Ctrl+C` in that terminal.
+Maven downloads dependencies (first run takes longer), compiles, and starts the embedded Tomcat server. Wait for the "Started Ecom1Application" line in the log — the app listens on port 8080 (`spring.application.name=e-com1` and no `server.port`, so 8080 is the default). Stop with `Ctrl+C` in that terminal.
 
 **Q10. How to test login in Postman?**
 1. Click **New** → **HTTP Request**: method `POST`, URL `http://localhost:8080/api/auth/login`

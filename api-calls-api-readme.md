@@ -200,12 +200,12 @@ is a separate topic.
 ## 6. Files involved
 
 ```
-src/main/java/com/example/spring3/controller/
+src/main/java/com/example/ecom1/controller/
 ├── InventoryController.java   (NEW — inner API, knows stock levels)
 ├── OrderController.java       (NEW — outer API, calls Inventory via RestClient)
 └── HomeController.java        (existing, unaffected)
 
-src/main/java/com/example/spring3/config/SecurityConfig.java  (modified — permitAll for the two new routes)
+src/main/java/com/example/ecom1/config/SecurityConfig.java  (modified — permitAll for the two new routes)
 ```
 
 ---
@@ -213,7 +213,7 @@ src/main/java/com/example/spring3/config/SecurityConfig.java  (modified — perm
 ## 7. How to run & test
 
 ```bash
-cd spring3
+cd e-com1
 docker compose up -d      # only if you also want Kafka — not needed for this demo
 .\mvnw.cmd spring-boot:run
 ```

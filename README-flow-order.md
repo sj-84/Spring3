@@ -14,7 +14,7 @@ startup to console output, and **how Spring decides the order** of creation.
 ## 1. The files involved
 
 ```
-src/main/java/com/example/spring3/demo/
+src/main/java/com/example/ecom1/demo/
 ├── WeatherApiClient.java   (plain class — no annotation)
 ├── WeatherConfig.java      (@Configuration + @Bean)   → builds the client
 ├── WeatherService.java     (@Component)               → your own service
@@ -133,7 +133,7 @@ public class DemoRunner implements CommandLineRunner {
 ## 3. The flow — step by step (A to Z)
 
 **Step 1 — Spring starts up.**
-`@SpringBootApplication` enables component scanning of `com.example.spring3`.
+`@SpringBootApplication` enables component scanning of `com.example.ecom1`.
 Spring finds: `WeatherConfig`, `WeatherService`, `DemoRunner`. It does **not** order
 them yet — it just makes a *list* of everything that exists.
 

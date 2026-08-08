@@ -180,7 +180,7 @@ Key points:
   lands in your `OrderController` constructor.
 
 You can see a commented teaching replica of this in:
-`src/main/java/com/example/spring3/config/RestClientAutoConfigurationDemo.java`
+`src/main/java/com/example/ecom1/config/RestClientAutoConfigurationDemo.java`
 (not registered, so it doesn't conflict — it exists purely to show the mechanism).
 
 ---
