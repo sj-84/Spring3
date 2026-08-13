@@ -29,7 +29,7 @@ public class SecurityConfig { //jwtauthfilter used
                 .httpBasic(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/api/public", "/api/auth/login", "/api/inventory/**", "/api/order/**").permitAll() //requestMatchers takes varargs as arg which is an array
+                        .requestMatchers("/", "/api/public", "/api/auth/login", "/api/inventory/**", "/api/order/**", "/api/auth/register").permitAll() //requestMatchers takes varargs as arg which is an array
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
@@ -40,12 +40,12 @@ public class SecurityConfig { //jwtauthfilter used
         return new BCryptPasswordEncoder();
     }
 
-    @Bean
-    public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) { //configuration of user and pass
-        return new InMemoryUserDetailsManager(
-                User.withUsername("admin").password(passwordEncoder.encode("password")).roles("USER").build(),
-                User.withUsername("user").password(passwordEncoder.encode("1234")).roles("USER").build());
-    }
+//    @Bean //commented since now user details come from db
+//    public UserDetailsService userDetailsService(PasswordEncoder passwordEncoder) { //configuration of user and pass
+//        return new InMemoryUserDetailsManager(
+//                User.withUsername("admin").password(passwordEncoder.encode("password")).roles("USER").build(),
+//                User.withUsername("user").password(passwordEncoder.encode("1234")).roles("USER").build());
+//    }
 }
 
 //Because / is explicitly whitelisted in SecurityConfig.java:

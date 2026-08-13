@@ -1,0 +1,399 @@
+# Registration + Moving Users to Postgres — How the Pieces Fit
+
+> Read this top to bottom. It explains every Spring Boot file involved in two
+> things you just built: **(A)** storing users in Postgres instead of memory, and
+> **(B)** the `/api/auth/register` endpoint. You are a beginner, so this starts
+> from zero and explains *why* each file exists and *how* they link.
+
+---
+
+## ⚠️ SECURITY FLAG (read before anything else) — ANYONE CAN BE ADMIN
+
+Your `/api/auth/register` endpoint accepts the role **from the client**:
+
+```json
+POST /api/auth/register
+{ "username": "evil", "password": "x", "email": "x@x.com", "role": "ADMIN" }
+```
+
+...and the backend stores it **as-is** (`AuthController.register()` →
+`user.setRole(request.role())`). There is **no check anywhere** that stops it.
+
+**What this means:** any stranger can open Postman, send one request, and walk
+out with a full `ADMIN` account. That account can then do anything an admin
+does. This is a *real vulnerability* — not a theoretical one — and it exists
+**today** in your code.
+
+**Why the frontend dropdown is NOT a fix:** the frontend only offers
+`CUSTOMER`/`SELLER`, but the frontend is just a program sending HTTP. The API
+is public and accepts any JSON. Anyone can skip your UI and hit the API
+directly. **The backend must be the gatekeeper.**
+
+**The fix (do this before anything else in Phase 1):** in
+`AuthController.register()`, reject `ADMIN`:
+
+```java
+if (request.role() == Role.ADMIN) {
+    return ResponseEntity.status(403).body(Map.of("error", "You cannot sign up as ADMIN"));
+}
+```
+
+Or, even safer, **ignore the client-supplied role entirely** and always default
+to `CUSTOMER` at signup — sellers get upgraded by an existing admin later.
+(Keep reading: it's also listed as improvement #3 in section 12.)
+
+---
+
+## 0. The big picture
+
+Think of your app as a restaurant:
+
+| Piece            | Analogy                       | File(s)                                   |
+|------------------|-------------------------------|-------------------------------------------|
+| Menu/ingredients | What Spring can cook          | `pom.xml` (dependencies)                  |
+| Pantry address   | Where the fridge is           | `application.properties` (DB connection)  |
+| Recipe card      | How a person is "described"   | `User.java` + `Role.java`                 |
+| Waiter's notepad | The form the guest fills out  | `RegisterRequest.java`                    |
+| Kitchen pass     | Who is allowed to order food  | `SecurityConfig.java`                     |
+| Counter window   | Where orders arrive           | `AuthController.java`                     |
+| Person-finder    | Who looks up an old guest     | `CustomUserDetailsService.java`           |
+| Storage room     | The actual database           | Postgres (in DBeaver)                     |
+
+The single most important idea for a beginner:
+
+> **Spring does NOT "know" your database. You connect them with small pieces of
+> glue code. Each file is one piece of glue.**
+
+---
+
+## 1. `pom.xml` — "what tools are available?"
+
+Without these two dependencies, none of this works:
+
+```xml
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.postgresql</groupId>
+    <artifactId>postgresql</artifactId>
+    <scope>runtime</scope>
+</dependency>
+```
+
+- **`spring-boot-starter-data-jpa`** = the ORM bundle (JPA + Hibernate). This is
+  the thing that can turn a Java class into a database table and back.
+- **`postgresql`** = the driver. Java can't "speak Postgres" by itself; this jar
+  is the translator between Java and the Postgres protocol.
+
+The other important one (already present) is `spring-boot-starter-security` —
+that's what makes `PasswordEncoder`, `UserDetailsService`, etc. exist.
+
+---
+
+## 2. `application.properties` — "where is the database?"
+
+```properties
+spring.datasource.url=jdbc:postgresql://localhost:5432/ecom
+spring.datasource.username=postgres
+spring.datasource.password=<YOUR POSTGRES PASSWORD>
+```
+
+- `jdbc:postgresql://localhost:5432/ecom` = the address of the fridge:
+  protocol `jdbc:postgresql`, host `localhost`, port `5432`, database `ecom`.
+- These three lines tell Spring "when you want to talk to a DB, go here."
+
+> ⚠️ **Check before you run:** your file is missing these two lines. Without
+> `ddl-auto`, Hibernate will NOT create the `users` table automatically for
+> Postgres (Boot only auto-creates tables for embedded DBs like H2):
+>
+> ```properties
+> spring.jpa.hibernate.ddl-auto=update
+> spring.jpa.show-sql=true
+> ```
+>
+> `update` = Hibernate creates/alters tables to match your entities (fine while
+> learning; **Flyway migrations replace it in Phase 2**). `show-sql` prints the
+> generated SQL in the console — extremely educational.
+
+---
+
+## 3. `Role.java` — "which badges exist?"
+
+```java
+public enum Role {
+    CUSTOMER,
+    SELLER,
+    ADMIN
+}
+```
+
+An enum is just a fixed list of allowed values. `User.role` can only be one of
+these three. This is the *badge* that decides what a user may do later.
+
+---
+
+## 4. `User.java` — "what is a person, to the database?"
+
+This is the file that turns a Java class into a table. The key annotations:
+
+| Annotation | Meaning |
+|---|---|
+| `@Entity` | "This Java class = one row of a table." |
+| `@Table(name = "users")` | Name the table `users` (`user` is a reserved word in Postgres). |
+| `@Id` | This field is the primary key. |
+| `@GeneratedValue(strategy = IDENTITY)` | Let the DB auto-increment the id (1, 2, 3...). |
+| `@Column(unique = true, nullable = false)` | Username: required, never repeats. DB-level safety net. |
+| `@Enumerated(EnumType.STRING)` | Store role as text `'SELLER'`, not as a position number. |
+
+So the class `User` maps 1-to-1 to the table `users`, and a `new User()` later
+becomes a row in Postgres. The empty constructor `public User() {}` is needed
+only by JPA (it creates empty objects, then fills the fields).
+
+**Name clash warning:** your entity is named `User` and Spring Security has its
+own `User` class too. That's why you see fully-qualified names like
+`org.springframework.security.core.userdetails.User` in the service — to tell
+them apart.
+
+---
+
+## 5. `UserRepository.java` — "the auto-magic database helper"
+
+```java
+public interface UserRepository extends JpaRepository<User, Long> {
+    Optional<User> findByUserName(String userName);
+    boolean existsByUserName(String userName);
+}
+```
+
+This is an **interface** — no implementation anywhere. Spring Data JPA sees
+`extends JpaRepository<User, Long>` and:
+
+1. generates the real class at runtime ("proxy"),
+2. registers it as a Spring bean, so other classes can inject it,
+3. reads your method *names* and writes the SQL for you:
+
+```
+findByUserName   →  SELECT * FROM users WHERE username = ?
+existsByUserName →  SELECT EXISTS(SELECT 1 FROM users WHERE username = ?)
+```
+
+`<User, Long>` = "manages the `User` entity, whose primary key is a `Long`."
+The name-match is case-insensitive, so `findByUserName` finds the `username`
+field.
+
+---
+
+## 6. `RegisterRequest.java` — "the signup form"
+
+```java
+public record RegisterRequest(String username, String password, String email, Role role) {
+}
+```
+
+A **record** = a tiny class that only carries data (auto-generates constructor +
+accessors like `username()`, `password()`...). When a client POSTs JSON, Jackson
+(inside Spring) fills this record from the request body.
+
+**Why not use `User` directly?** Because they are different shapes with
+different rules:
+- `RegisterRequest` = what the client is allowed to send (4 safe fields).
+- `User` = the database entity (has `id`, DB constraints, JPA annotations).
+
+Accepting a `User` from the internet would let a hacker set `id`, `role=ADMIN`,
+etc. **Never accept entities from a request.**
+
+---
+
+## 7. `AuthController.java` — "the counter window"
+
+The only file that actually *talks* to the client. It has three endpoints under
+`/api/auth`:
+
+```
+POST /api/auth/register   ← the new one (this README)
+POST /api/auth/login      ← existing
+GET  /api/auth/me         ← existing
+```
+
+`register(...)` does 4 jobs:
+
+```java
+1. if (userRepository.existsByUserName(request.username())) → 409 "Username already taken"
+2. User user = new User();                                  → make an empty person
+3. user.setPassword(passwordEncoder.encode(...));           → HASH the password (BCrypt)
+4. userRepository.save(user);                               → INSERT into users
+   return 201                                               → tell the client "created"
+```
+
+The important security line is `passwordEncoder.encode(...)` — the raw password
+**never** touches the database. DBeaver shows a `$2a$10$...` hash instead.
+
+---
+
+## 8. `CustomUserDetailsService.java` — "the new person-finder"
+
+This is the file that replaced the old in-memory users. It implements Spring's
+`UserDetailsService`, which is just:
+
+> "Who is this username? Give me their `UserDetails`."
+
+```java
+@Service
+public class CustomUserDetailsService implements UserDetailsService {
+    private final UserRepository userRepository;
+
+    public UserDetails loadUserByUsername(String username) {
+        User user = userRepository.findByUserName(username)      // 1. ask Postgres
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        return org.springframework.security.core.userdetails.User
+                .withUsername(user.getUsername())
+                .password(user.getPassword())
+                .authorities(List.of(new SimpleGrantedAuthority("ROLE_" + user.getRole().name())))
+                .build();                                        // 2. make Spring's ID card
+    }
+}
+```
+
+- Before this class, `SecurityConfig` had an `InMemoryUserDetailsManager` bean
+  with hardcoded users. **Now it's commented out** (`SecurityConfig.java:43`) —
+  this `@Service` is the replacement, backed by Postgres.
+- `ROLE_CUSTOMER` / `ROLE_SELLER` / `ROLE_ADMIN` is the "badge" format Spring
+  Security expects (the `ROLE_` prefix is required).
+
+---
+
+## 9. `SecurityConfig.java` — "who is allowed in?"
+
+Two things it contributes:
+
+1. **`permitAll()` for registration** — so an anonymous visitor (not yet logged
+   in!) can reach `/api/auth/register`. Everything else needs a token:
+   ```java
+   .requestMatchers("/", "/api/public", "/api/auth/login", "/api/auth/register",
+                    "/api/inventory/**", "/api/order/**").permitAll()
+   .anyRequest().authenticated()
+   ```
+2. **The `PasswordEncoder` bean** — BCrypt. This is the exact bean
+   `AuthController` injects for `encode()` and login's `matches()`.
+   ```java
+   @Bean
+   public PasswordEncoder passwordEncoder() { return new BCryptPasswordEncoder(); }
+   ```
+
+---
+
+## 10. `JWTAuthFilter` + `JWTService` (login half — brief)
+
+Not needed for registration itself, but relevant to "moving users to DB":
+
+- `JWTService` creates/validates the token (a signed "ID card" with the username
+  inside, using `app.jwt.secret` from `application.properties`).
+- `JWTAuthFilter` runs on every request: if a `Bearer` token is present, it
+  calls `CustomUserDetailsService.loadUserByUsername(...)` to rebuild the
+  authenticated user **from Postgres** on every request.
+
+So a freshly registered user can immediately log in and get a token, because
+login now goes through the same database-backed person-finder.
+
+---
+
+## 11. How the files LINK (dependency graph)
+
+Read top to bottom; an arrow means "uses":
+
+```
+pom.xml ──provides──► spring-boot-starter-data-jpa + postgresql driver
+                            │
+application.properties ─────┴──► connects to Postgres (db "ecom")
+                            │
+User.java + Role.java ──────┤  JPA maps these to tables
+                            │
+UserRepository.java ◄───────┘  generated implementation, injected as bean
+       ▲                          ▲
+       │ findByUserName()         │ save(), existsByUserName()
+       │                          │
+CustomUserDetailsService ──► AuthController.register()
+       │  (implements                 │  uses
+       │   UserDetailsService)        │  passwordEncoder.encode()  [bean from SecurityConfig]
+       │                              │
+   Spring Security login ◄───────────┘
+   (JWTAuthFilter calls the person-finder on every token request)
+```
+
+**The complete registration journey:**
+
+```
+Angular register form
+   │  POST /api/auth/register   (JSON: username, password, email, role)
+   ▼
+SecurityConfig        → "/api/auth/register" is permitAll(), so no token needed
+   ▼
+AuthController.register()
+   │  1. existsByUserName()?       → UserRepository → SELECT ... FROM users → 409 if exists
+   │  2. passwordEncoder.encode()  → BCrypt hash of the password
+   │  3. new User() + set fields
+   │  4. userRepository.save(user) → Hibernate → INSERT INTO users ... → Postgres
+   ▼
+201 "User registered successfully"  → back to Angular → redirect to /login
+   ▼
+(user logs in: loadUserByUsername reads that same row from Postgres, returns
+ UserDetails, JWTService mints a token) ✅
+```
+
+---
+
+## 12. Suggested improvements (in learning order)
+
+**Must-do before you keep going**
+
+1. **Add `spring.jpa.hibernate.ddl-auto=update`** (see section 2). Without it,
+   Postgres gets no `users` table and registration fails with
+   `relation "users" does not exist`.
+2. **Don't commit the DB password.** Your real Postgres password sits in
+   `application.properties`. Use an environment variable:
+   ```properties
+   spring.datasource.password=${DB_PASSWORD}
+   ```
+   (Phase 0 wants H2 for dev + Postgres via profiles — this is that moment.)
+3. **Block self-registration as ADMIN.** Right now anyone can POST
+   `"role": "ADMIN"` and become an admin. This is a genuine vulnerability.
+   Simplest fix: in `register(...)`, reject `request.role() == Role.ADMIN`
+   with 400/403. A frontend-only fix is not enough.
+   **(See the ⚠️ SECURITY FLAG section at the top — fix this first.)**
+
+**Do these when you learn validation (Phase 3)**
+
+4. Add Bean Validation to `RegisterRequest`:
+   ```java
+   public record RegisterRequest(
+       @NotBlank String username,
+       @NotBlank @Email String email,
+       @NotBlank @Size(min = 8) String password,
+       Role role) {}
+   ```
+   plus `@Valid` on the controller parameter and a global
+   `@RestControllerAdvice` for clean 400 responses.
+5. Make the username/email unique check **atomic**. `existsByUserName` then
+   `save` has a tiny race (two requests could both pass the check). The real
+   protection is the DB `unique` constraint (already there) + catching
+   `DataIntegrityViolationException`. This is a great story for the Phase 4
+   concurrency topic.
+
+**Cleanliness / structure (Phase 2–3)**
+
+6. Move the registration logic out of the controller into an `AuthService`
+   (`controller → service → repository` layering).
+7. Let Lombok generate the `User` getters/setters (`@Getter @Setter` on the
+   class) to kill the boilerplate — only after you understand what they do.
+8. Add a seeded ADMIN user on startup (a `CommandLineRunner`) so you always
+   have a known admin to log in as. The old `admin`/`password` in-memory users
+   are gone now.
+
+**Later / Phase 1 completion**
+
+9. Access + refresh tokens, refresh rotation, and logout (revoke refresh token).
+10. Return a **structured JSON error** consistently (e.g. `{"error": "..."}`)
+    instead of a plain string — your Angular `error` handling currently guesses
+    between the two.
